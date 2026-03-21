@@ -11,17 +11,17 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 /**
- * 登录方式实体
- * 支持：USERNAME(用户名密码)、MOBILE(手机号)、EMAIL(邮箱)、WECHAT(微信)等
+ * 账号实体（用户认证方式）
+ * 一个用户可拥有多个账号：USERNAME(用户名密码)、MOBILE(手机号)、EMAIL(邮箱)、WECHAT(微信)等
  */
 @Data
 @Entity
-@Table(name = "login_methods", 
-       uniqueConstraints = @UniqueConstraint(columnNames = {"login_type", "login_id"}))
+@Table(name = "accounts", 
+       uniqueConstraints = @UniqueConstraint(columnNames = {"account_type", "account_id"}))
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class LoginMethod {
+public class Account {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,17 +34,17 @@ public class LoginMethod {
     private Long userId;
 
     /**
-     * 登录类型：USERNAME, MOBILE, EMAIL, WECHAT
+     * 账号类型：USERNAME, MOBILE, EMAIL, WECHAT
      */
-    @Column(name = "login_type", nullable = false, length = 20)
+    @Column(name = "account_type", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
-    private LoginType loginType;
+    private AccountType accountType;
 
     /**
-     * 登录标识（用户名/手机号/邮箱等）
+     * 账号标识（用户名/手机号/邮箱等）
      */
-    @Column(name = "login_id", nullable = false, length = 64)
-    private String loginId;
+    @Column(name = "account_id", nullable = false, length = 64)
+    private String accountId;
 
     /**
      * 凭证（密码密文/第三方openid）
@@ -86,9 +86,9 @@ public class LoginMethod {
     private LocalDateTime updatedAt;
 
     /**
-     * 登录类型枚举
+     * 账号类型枚举
      */
-    public enum LoginType {
+    public enum AccountType {
         USERNAME,   // 用户名密码
         MOBILE,     // 手机号验证码
         EMAIL,      // 邮箱验证码

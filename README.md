@@ -143,11 +143,27 @@ osys-auth-server/
 | 表名 | 说明 |
 |------|------|
 | `users` | 用户主表 |
-| `login_methods` | 登录方式表（支持多种登录方式） |
+| `accounts` | 账号表（用户认证方式，支持多种） |
 | `sms_codes` | 短信验证码表 |
 | `login_logs` | 登录日志表 |
 | `oauth2_registered_client` | OAuth2 客户端注册表 |
 | `oauth2_authorization` | OAuth2 授权记录表 |
+
+## 数据模型关系
+
+```
+users (1) ←──────→ (N) accounts
+ 用户主表            账号表（多种认证方式）
+   │                      │
+   │                      ├── USERNAME (用户名密码)
+   │                      ├── MOBILE (手机号验证码)  
+   │                      ├── EMAIL (邮箱验证码)
+   │                      ├── WECHAT (微信)
+   │                      └── ... (可扩展)
+   │
+   └── login_logs (N)
+        登录日志
+```
 
 ## 扩展登录方式
 

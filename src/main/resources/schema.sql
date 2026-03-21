@@ -25,26 +25,26 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户主表';
 
 -- ============================================
--- 2. 登录方式表
+-- 2. 账号表 (accounts) - 存储用户认证方式
 -- ============================================
-CREATE TABLE IF NOT EXISTS login_methods (
+CREATE TABLE IF NOT EXISTS accounts (
     id              BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
     user_id         BIGINT NOT NULL COMMENT '关联用户ID',
-    login_type      VARCHAR(20) NOT NULL COMMENT '登录类型: USERNAME, MOBILE, EMAIL, WECHAT',
-    login_id        VARCHAR(64) NOT NULL COMMENT '登录标识(用户名/手机号等)',
+    account_type    VARCHAR(20) NOT NULL COMMENT '账号类型: USERNAME, MOBILE, EMAIL, WECHAT',
+    account_id      VARCHAR(64) NOT NULL COMMENT '账号标识(用户名/手机号等)',
     credential      VARCHAR(255) COMMENT '凭证(密码密文/第三方openid)',
     salt            VARCHAR(32) COMMENT '密码盐值',
-    is_primary      TINYINT DEFAULT 0 COMMENT '是否主登录方式: 0-否, 1-是',
+    is_primary      TINYINT DEFAULT 0 COMMENT '是否主账号: 0-否, 1-是',
     is_verified     TINYINT DEFAULT 0 COMMENT '是否已验证: 0-否, 1-是',
     status          TINYINT DEFAULT 1 COMMENT '状态: 0-禁用, 1-正常',
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     
-    UNIQUE KEY uk_login_type_id (login_type, login_id),
+    UNIQUE KEY uk_account_type_id (account_type, account_id),
     INDEX idx_user_id (user_id),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='登录方式表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户账号表(多种认证方式)';
 
 -- ============================================
 -- 3. 短信验证码表
@@ -68,8 +68,8 @@ CREATE TABLE IF NOT EXISTS sms_codes (
 CREATE TABLE IF NOT EXISTS login_logs (
     id              BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
     user_id         BIGINT COMMENT '用户ID(登录成功时)',
-    login_type      VARCHAR(20) NOT NULL COMMENT '登录方式',
-    login_id        VARCHAR(64) COMMENT '登录标识',
+    account_type    VARCHAR(20) NOT NULL COMMENT '账号类型',
+    account_id      VARCHAR(64) COMMENT '账号标识',
     ip_address      VARCHAR(45) COMMENT 'IP地址',
     user_agent      VARCHAR(500) COMMENT 'UA',
     status          TINYINT NOT NULL COMMENT '状态: 0-失败, 1-成功',
