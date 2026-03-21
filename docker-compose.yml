@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  auth-server:
+    build: .
+    container_name: osys-auth-server
+    ports:
+      - "9000:9000"
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USERNAME=root
+      - MYSQL_PASSWORD=root123
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - auth-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: osys-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=osys_auth
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - auth-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: osys-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - auth-network
+
+volumes:
+  mysql-data:
+  redis-data:
+
+networks:
+  auth-network:
+    driver: bridge
