@@ -81,7 +81,102 @@ CREATE TABLE IF NOT EXISTS login_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='登录日志';
 
 -- ============================================
--- 5. OAuth2 客户端注册表 (Spring Authorization Server)
+-- 5. 应用/子系统注册表 (applications)
+-- ============================================
+CREATE TABLE IF NOT EXISTS applications (
+    id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
+    client_id           VARCHAR(100) UNIQUE NOT NULL COMMENT 'OAuth2 Client ID',
+    app_name            VARCHAR(100) NOT NULL COMMENT '应用名称',
+    app_code            VARCHAR(50) UNIQUE NOT NULL COMMENT '应用编码(系统标识)',
+    app_type            VARCHAR(20) NOT NULL COMMENT '类型: WEB, APP, SERVICE',
+    description         VARCHAR(500) COMMENT '应用描述',
+    
+    homepage_url        VARCHAR(255) COMMENT '首页URL',
+    logo_url            VARCHAR(255) COMMENT 'Logo',
+    
+    sso_enabled         TINYINT DEFAULT 1 COMMENT '是否启用SSO: 0-否, 1-是',
+    sso_session_timeout INT DEFAULT 7200 COMMENT 'SSO会话超时(秒)',
+    
+    required_scopes     VARCHAR(500) COMMENT '必需权限范围',
+    auto_grant_scopes   VARCHAR(500) COMMENT '自动授权的权限',
+    
+    status              TINYINT DEFAULT 1 COMMENT '状态: 0-禁用, 1-启用',
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_app_code (app_code),
+    INDEX idx_client_id (client_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='应用/子系统注册表';
+
+-- ============================================
+-- 6. SSO 中央会话表 (sso_sessions)
+-- ============================================
+CREATE TABLE IF NOT EXISTS sso_sessions (
+    id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
+    session_id          VARCHAR(64) UNIQUE NOT NULL COMMENT 'SSO Session ID',
+    user_id             BIGINT NOT NULL COMMENT '用户ID',
+    
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    last_accessed_at    DATETIME COMMENT '最后访问时间',
+    expires_at          DATETIME NOT NULL COMMENT '过期时间',
+    
+    ip_address          VARCHAR(45) COMMENT 'IP地址',
+    user_agent          VARCHAR(500) COMMENT 'UA',
+    device_fingerprint  VARCHAR(64) COMMENT '设备指纹',
+    
+    status              TINYINT DEFAULT 1 COMMENT '状态: 0-已失效, 1-有效',
+    
+    INDEX idx_session_id (session_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_expires_at (expires_at),
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='SSO中央会话表';
+
+-- ============================================
+-- 7. 客户端登录状态表 (client_sessions)
+-- ============================================
+CREATE TABLE IF NOT EXISTS client_sessions (
+    id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
+    sso_session_id      VARCHAR(64) NOT NULL COMMENT '关联SSO Session',
+    client_id           VARCHAR(100) NOT NULL COMMENT 'OAuth2 Client ID',
+    user_id             BIGINT NOT NULL COMMENT '用户ID',
+    
+    access_token_hash   VARCHAR(64) COMMENT 'Access Token哈希',
+    refresh_token_hash  VARCHAR(64) COMMENT 'Refresh Token哈希',
+    
+    login_at            DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '登录时间',
+    expires_at          DATETIME NOT NULL COMMENT 'Token过期时间',
+    
+    status              TINYINT DEFAULT 1 COMMENT '状态: 0-已登出, 1-有效',
+    
+    INDEX idx_sso_session (sso_session_id),
+    INDEX idx_client_user (client_id, user_id),
+    INDEX idx_expires_at (expires_at),
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户端登录状态表';
+
+-- ============================================
+-- 8. 用户应用授权表 (user_app_authorizations)
+-- ============================================
+CREATE TABLE IF NOT EXISTS user_app_authorizations (
+    id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
+    user_id             BIGINT NOT NULL COMMENT '用户ID',
+    client_id           VARCHAR(100) NOT NULL COMMENT '应用Client ID',
+    
+    scopes              VARCHAR(500) NOT NULL COMMENT '已授权的权限范围',
+    authorized_at       DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '授权时间',
+    auto_authorized     TINYINT DEFAULT 0 COMMENT '0-每次确认, 1-自动授权',
+    
+    UNIQUE KEY uk_user_client (user_id, client_id),
+    INDEX idx_client_id (client_id),
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户应用授权表';
+
+-- ============================================
+-- 9. OAuth2 客户端注册表 (Spring Authorization Server)
 -- ============================================
 CREATE TABLE IF NOT EXISTS oauth2_registered_client (
     id varchar(100) NOT NULL PRIMARY KEY COMMENT '客户端ID',
@@ -131,20 +226,53 @@ CREATE TABLE IF NOT EXISTS oauth2_authorization (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OAuth2授权记录';
 
 -- ============================================
--- 7. 初始化测试客户端
+-- 10. 初始化测试数据
 -- ============================================
+
+-- 初始化子系统应用
+INSERT INTO applications (client_id, app_name, app_code, app_type, description, homepage_url, sso_enabled, required_scopes, auto_grant_scopes, status) VALUES
+('osys-web', 'OSYS Web Portal', 'WEB_PORTAL', 'WEB', '主站 Web 门户', 'https://web.osys.local', 1, 'openid,profile', 'openid,profile', 1),
+('osys-admin', 'OSYS Admin Dashboard', 'ADMIN', 'WEB', '管理后台', 'https://admin.osys.local', 1, 'openid,profile,admin', 'openid,profile', 1),
+('osys-api', 'OSYS API Gateway', 'API_GATEWAY', 'SERVICE', 'API 网关服务', NULL, 1, 'openid,profile,service', 'openid,profile', 1),
+('osys-mobile', 'OSYS Mobile App', 'MOBILE_APP', 'APP', '移动应用', NULL, 1, 'openid,profile', 'openid,profile', 1)
+ON DUPLICATE KEY UPDATE app_name = VALUES(app_name);
+
+-- 初始化 OAuth2 客户端 (与 applications 对应)
 INSERT INTO oauth2_registered_client (
     id, client_id, client_name, 
     client_authentication_methods, authorization_grant_types, 
     redirect_uris, scopes, client_settings, token_settings
-) VALUES (
-    'web-app-client',
-    'web-app',
-    'Web Application',
-    'client_secret_basic,client_secret_post',
-    'authorization_code,refresh_token,password',
-    'http://localhost:8080/login/oauth2/code/web-app',
-    'openid,profile,read,write',
-    '{"requireAuthorizationConsent":true,"requireProofKey":false}',
-    '{"accessTokenTimeToLive":"2h","refreshTokenTimeToLive":"7d","reuseRefreshTokens":false}'
-) ON DUPLICATE KEY UPDATE client_name = 'Web Application';
+) VALUES 
+-- Web Portal
+('osys-web-client', 'osys-web', 'OSYS Web Portal',
+ 'client_secret_basic,client_secret_post',
+ 'authorization_code,refresh_token',
+ 'https://web.osys.local/auth/callback,http://localhost:3000/auth/callback',
+ 'openid,profile,read,write',
+ '{"requireAuthorizationConsent":true,"requireProofKey":true}',
+ '{"accessTokenTimeToLive":"2h","refreshTokenTimeToLive":"7d"}'),
+-- Admin
+('osys-admin-client', 'osys-admin', 'OSYS Admin Dashboard',
+ 'client_secret_basic,client_secret_post',
+ 'authorization_code,refresh_token',
+ 'https://admin.osys.local/auth/callback,http://localhost:3001/auth/callback',
+ 'openid,profile,read,write,admin',
+ '{"requireAuthorizationConsent":true,"requireProofKey":true}',
+ '{"accessTokenTimeToLive":"1h","refreshTokenTimeToLive":"1d"}'),
+-- API Gateway
+('osys-api-client', 'osys-api', 'OSYS API Gateway',
+ 'client_secret_basic',
+ 'client_credentials',
+ '',
+ 'service,read',
+ '{"requireAuthorizationConsent":false}',
+ '{"accessTokenTimeToLive":"24h"}'),
+-- Mobile App
+('osys-mobile-client', 'osys-mobile', 'OSYS Mobile App',
+ 'none',
+ 'authorization_code',
+ 'com.osys.mobile://auth/callback',
+ 'openid,profile,read,write',
+ '{"requireAuthorizationConsent":true,"requireProofKey":true}',
+ '{"accessTokenTimeToLive":"30d","refreshTokenTimeToLive":"90d"}')
+ON DUPLICATE KEY UPDATE client_name = VALUES(client_name);

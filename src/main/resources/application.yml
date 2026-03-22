@@ -55,6 +55,27 @@ auth:
     access-token-validity: 7200  # 2小时
     refresh-token-validity: 604800  # 7天
   
+  sso:
+    # SSO Session 配置
+    session-timeout: 7200  # 2小时
+    session-refresh-threshold: 1800  # 30分钟内访问自动续期
+    max-sessions-per-user: 10  # 单用户最大会话数
+    
+    # 登出配置
+    back-channel-logout-enabled: true
+    back-channel-logout-uri-template: "{clientBaseUrl}/auth/logout"
+    
+    # Cookie 配置
+    cookie-name: "OSYS_SSO_SESSION"
+    cookie-domain: ${SSO_COOKIE_DOMAIN:}  # 跨子系统共享，如: .osys.local
+    cookie-secure: true
+    cookie-http-only: true
+    cookie-same-site: "Lax"
+    
+    # 授权确认页配置
+    auto-approve-scopes: "openid,profile"  # 自动同意的权限
+    require-user-consent: true  # 是否显示授权确认页
+  
   sms:
     # 验证码配置
     code-length: 6
