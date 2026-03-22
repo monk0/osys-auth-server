@@ -4,6 +4,7 @@
 
 ## 特性
 
+- ✅ **OIDC 完整支持** - UserInfo 端点、ID Token、Discovery、JWKS
 - ✅ **单点登录 (SSO)** - 平台内多子系统统一登录状态
 - ✅ **统一登出 (SLO)** - 一处登出，全平台失效
 - ✅ **标准 OAuth2/OIDC** - 基于 Spring Authorization Server
@@ -176,6 +177,53 @@ Authorization: Bearer your_access_token
 
 # 或 OAuth2 标准登出
 GET http://localhost:9000/logout?id_token_hint=xxx&post_logout_redirect_uri=xxx
+```
+
+### OIDC UserInfo
+
+```bash
+# 使用 Access Token 获取用户信息
+GET http://localhost:9000/userinfo
+Authorization: Bearer your_access_token
+
+# 返回示例
+{
+  "sub": "U123456",
+  "name": "张三",
+  "nickname": "张三",
+  "picture": "https://example.com/avatar.jpg",
+  "email": "zhangsan@example.com",
+  "email_verified": true,
+  "phone_number": "13800138000",
+  "phone_number_verified": true,
+  "user_id": 1,
+  "user_code": "U123456",
+  "account_types": ["USERNAME", "MOBILE", "EMAIL"]
+}
+```
+
+### OIDC Discovery
+
+```bash
+# 获取 OIDC 配置信息
+GET http://localhost:9000/.well-known/openid-configuration
+
+# 返回配置包括：
+# - authorization_endpoint
+# - token_endpoint
+# - userinfo_endpoint
+# - jwks_uri
+# - scopes_supported
+# - claims_supported
+```
+
+### JWKS (公钥)
+
+```bash
+# 获取验证 JWT 签名的公钥
+GET http://localhost:9000/oauth2/jwks
+
+# 返回 JWK Set，客户端用此验证 ID Token 和 Access Token
 ```
 
 ## 数据库设计
