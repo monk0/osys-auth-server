@@ -4,6 +4,7 @@
 
 ## 特性
 
+- ✅ **可插拔认证源** - 支持 LDAP/AD、OIDC、OAuth2、企业微信、钉钉、飞书等
 - ✅ **OIDC 完整支持** - UserInfo 端点、ID Token、Discovery、JWKS
 - ✅ **单点登录 (SSO)** - 平台内多子系统统一登录状态
 - ✅ **统一登出 (SLO)** - 一处登出，全平台失效
@@ -240,8 +241,44 @@ GET http://localhost:9000/oauth2/jwks
 | `user_app_authorizations` | 用户应用授权表 |
 | `sms_codes` | 短信验证码表 |
 | `login_logs` | 登录日志表 |
+| `auth_sources` | 认证源配置表（LDAP/OIDC/企业微信等） |
 
-详细设计见 `docs/SSO-DESIGN.md`
+### 可插拔认证源
+
+支持通过配置对接外部认证系统：
+
+| 认证源类型 | 说明 | 配置方式 |
+|-----------|------|---------|
+| `LOCAL` | 本地账号（默认） | 内置 |
+| `LDAP` | Active Directory / LDAP | 配置连接信息 |
+| `OIDC` | OpenID Connect（外部） | 配置 Issuer/Client |
+| `WECHAT_WORK` | 企业微信 | 配置 CorpID/AgentID |
+| `DINGTALK` | 钉钉 | 配置 AppKey/AppSecret |
+| `FEISHU` | 飞书 | 配置 AppID/AppSecret |
+
+**企业部署示例：**
+
+```yaml
+# 场景1：对接企业 AD
+auth:
+  sources:
+    corporate-ldap:
+      enabled: true
+      type: LDAP
+      url: ldap://ad.company.com:389
+      base-dn: dc=company,dc=com
+
+# 场景2：对接企业自建 IAM
+auth:
+  sources:
+    corporate-oidc:
+      enabled: true
+      type: OIDC
+      issuer: https://auth.company.com
+      client-id: osys-auth
+```
+
+详细设计见 `docs/AUTH_SOURCE_DESIGN.md`
 
 ## 项目结构
 
@@ -317,9 +354,11 @@ docker-compose up -d
 ## 开发计划
 
 - [x] 基础 OAuth2 认证
+- [x] OIDC 完整支持
 - [x] SSO 单点登录
 - [x] SLO 统一登出
 - [x] 多账号体系
+- [x] 可插拔认证源（LDAP/OIDC/企业微信等）
 - [x] 应用/子系统管理
 - [ ] 设备管理（查看已登录设备）
 - [ ] MFA 多因素认证
