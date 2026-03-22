@@ -1,24 +1,69 @@
 # OSYS Auth Server
 
-基于 Spring Authorization Server 的统一认证服务，支持多种登录方式（用户名密码、手机号验证码等）。
+基于 Spring Authorization Server 的平台级统一认证服务，支持单点登录 (SSO) 和多种登录方式。
 
 ## 特性
 
-- ✅ **标准 OAuth2/OIDC 协议** - 基于 Spring Authorization Server
-- ✅ **多登录方式** - 用户名密码、手机号验证码（可扩展邮箱、微信等）
-- ✅ **用户与登录方式解耦** - 一个用户可绑定多种登录方式
+- ✅ **单点登录 (SSO)** - 平台内多子系统统一登录状态
+- ✅ **统一登出 (SLO)** - 一处登出，全平台失效
+- ✅ **标准 OAuth2/OIDC** - 基于 Spring Authorization Server
+- ✅ **多账号体系** - 一个用户可绑定多种认证方式
+- ✅ **应用管理** - 子系统注册、授权管理
 - ✅ **JWT Token** - Access Token + Refresh Token
-- ✅ **安全机制** - 密码加密、验证码限流、登录失败锁定
+- ✅ **安全机制** - 密码加密、验证码限流、登录锁定
 
-## 技术栈
+## 架构
 
-- Java 17
-- Spring Boot 3.2
-- Spring Authorization Server 1.3
-- Spring Security
-- Spring Data JPA
-- MySQL 8
-- Redis
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      OSYS Auth Server                        │
+│                   (中央认证服务器)                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │   users     │  │   accounts  │  │  sso_sessions       │ │
+│  │  (用户主表)  │  │  (账号表)   │  │  (中央会话管理)      │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │ applications│  │client_sessions│ │user_app_authorizations│
+│  │ (子系统注册) │  │(子系统会话)  │  │  (用户授权)          │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ OAuth2/OIDC
+       ┌───────────┼───────────┐
+       ▼           ▼           ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│  Web门户  │ │  管理后台  │ │  移动APP  │
+│ (osys-web)│ │(osys-admin)│ │(osys-mobile)│
+└──────────┘ └──────────┘ └──────────┘
+```
+
+## 核心能力
+
+### 1. 单点登录 (SSO)
+
+用户在任一子系统登录后，访问其他子系统自动识别登录状态，无需重复输入密码。
+
+**登录流程：**
+```
+用户访问子系统A → 重定向到 Auth Server → 登录成功
+     ↓                                           ↓
+  创建 SSO Session                          颁发 Token
+     ↓                                           ↓
+用户访问子系统B → 重定向到 Auth Server → 发现已有 SSO Session → 直接颁发 Token
+```
+
+### 2. 统一登出 (SLO)
+
+用户在一处登出，Auth Server 通知所有已登录子系统清除会话。
+
+### 3. 多账号体系
+
+```
+用户 (User)
+ └── 账号1 (USERNAME: zhangsan)
+ └── 账号2 (MOBILE: 13800138000)
+ └── 账号3 (WECHAT: wx_openid_xxx)
+ └── 账号4 (EMAIL: xxx@example.com)
+```
 
 ## 快速开始
 
@@ -36,6 +81,10 @@ docker-compose up -d
 mysql -u root -p < src/main/resources/schema.sql
 ```
 
+脚本会自动创建：
+- 6 张核心表（users, accounts, sso_sessions 等）
+- 4 个示例子系统（Web门户、管理后台、API网关、移动APP）
+
 ### 3. 配置应用
 
 编辑 `src/main/resources/application.yml`：
@@ -51,6 +100,10 @@ spring:
     redis:
       host: localhost
       port: 6379
+
+auth:
+  sso:
+    cookie-domain: ".your-domain.com"  # 配置跨域 Cookie 共享
 ```
 
 ### 4. 启动服务
@@ -59,27 +112,48 @@ spring:
 ./mvnw spring-boot:run
 ```
 
-服务启动后访问：
+访问端点：
 - 授权端点：`http://localhost:9000/oauth2/authorize`
 - Token 端点：`http://localhost:9000/oauth2/token`
 - OIDC 配置：`http://localhost:9000/.well-known/openid-configuration`
 
+## 预置子系统
+
+初始化脚本自动创建以下应用：
+
+| 应用编码 | Client ID | 类型 | 说明 |
+|---------|-----------|------|------|
+| WEB_PORTAL | osys-web | Web | 主站 Web 门户 |
+| ADMIN | osys-admin | Web | 管理后台 |
+| API_GATEWAY | osys-api | Service | API 网关服务 |
+| MOBILE_APP | osys-mobile | App | 移动应用 |
+
 ## API 接口
 
-### 1. 用户名密码登录（OAuth2 Password Grant）
+### SSO 登录
 
 ```bash
-curl -X POST http://localhost:9000/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=password" \
-  -d "username=your_username" \
-  -d "password=your_password" \
-  -d "client_id=web-app" \
-  -d "client_secret=your_client_secret" \
-  -d "scope=openid read"
+# 1. 用户访问子系统，重定向到
+GET http://localhost:9000/oauth2/authorize?
+  response_type=code&
+  client_id=osys-web&
+  redirect_uri=http://localhost:3000/auth/callback&
+  scope=openid profile&
+  state=xxx
+
+# 2. 用户登录后，重定向回子系统
+# 子系统用 code 换 token
+POST http://localhost:9000/oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&code=xxx
+&redirect_uri=http://localhost:3000/auth/callback
+&client_id=osys-web
+&client_secret=secret
 ```
 
-### 2. 手机号验证码登录
+### 手机号验证码登录
 
 ```bash
 # 发送验证码
@@ -93,47 +167,15 @@ curl -X POST http://localhost:9000/api/auth/sms/login \
   -d '{"mobile": "13800138000", "code": "123456"}'
 ```
 
-### 3. 刷新 Token
+### 统一登出 (SLO)
 
 ```bash
-curl -X POST http://localhost:9000/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=refresh_token" \
-  -d "refresh_token=your_refresh_token" \
-  -d "client_id=web-app" \
-  -d "client_secret=your_client_secret"
-```
+# 调用全局登出
+POST http://localhost:9000/api/sso/logout
+Authorization: Bearer your_access_token
 
-### 4. 绑定手机号（需登录）
-
-```bash
-curl -X POST http://localhost:9000/api/user/login-methods/mobile/bind \
-  -H "Authorization: Bearer your_access_token" \
-  -H "Content-Type: application/json" \
-  -d '{"mobile": "13800138000", "code": "123456"}'
-```
-
-## 项目结构
-
-```
-osys-auth-server/
-├── src/
-│   ├── main/
-│   │   ├── java/com/osys/auth/
-│   │   │   ├── config/           # 配置类
-│   │   │   ├── controller/       # 控制器
-│   │   │   ├── service/          # 业务层
-│   │   │   ├── repository/       # 数据访问
-│   │   │   ├── entity/           # 实体类
-│   │   │   ├── dto/              # 数据传输对象
-│   │   │   └── security/         # 安全配置
-│   │   └── resources/
-│   │       ├── application.yml   # 应用配置
-│   │       └── schema.sql        # 数据库脚本
-│   └── test/                     # 测试代码
-├── pom.xml                       # Maven 配置
-├── Dockerfile                    # Docker 构建
-└── docker-compose.yml            # 一键启动
+# 或 OAuth2 标准登出
+GET http://localhost:9000/logout?id_token_hint=xxx&post_logout_redirect_uri=xxx
 ```
 
 ## 数据库设计
@@ -143,78 +185,68 @@ osys-auth-server/
 | 表名 | 说明 |
 |------|------|
 | `users` | 用户主表 |
-| `accounts` | 账号表（用户认证方式，支持多种） |
+| `accounts` | 账号表（多种认证方式） |
+| `sso_sessions` | SSO 中央会话表 |
+| `client_sessions` | 子系统登录状态表 |
+| `applications` | 子系统注册表 |
+| `user_app_authorizations` | 用户应用授权表 |
 | `sms_codes` | 短信验证码表 |
 | `login_logs` | 登录日志表 |
-| `oauth2_registered_client` | OAuth2 客户端注册表 |
-| `oauth2_authorization` | OAuth2 授权记录表 |
 
-## 数据模型关系
+详细设计见 `docs/SSO-DESIGN.md`
+
+## 项目结构
 
 ```
-users (1) ←──────→ (N) accounts
- 用户主表            账号表（多种认证方式）
-   │                      │
-   │                      ├── USERNAME (用户名密码)
-   │                      ├── MOBILE (手机号验证码)  
-   │                      ├── EMAIL (邮箱验证码)
-   │                      ├── WECHAT (微信)
-   │                      └── ... (可扩展)
-   │
-   └── login_logs (N)
-        登录日志
-```
-
-## 扩展登录方式
-
-实现 `AuthenticationHandler` 接口即可添加新的登录方式：
-
-```java
-@Component
-public class WechatAuthHandler implements AuthenticationHandler {
-    @Override
-    public String getLoginType() {
-        return "WECHAT";
-    }
-    
-    @Override
-    public Authentication authenticate(LoginRequest request) {
-        // 实现微信登录逻辑
-    }
-}
+osys-auth-server/
+├── docs/
+│   └── SSO-DESIGN.md           # SSO 架构设计文档
+├── src/
+│   ├── main/java/com/osys/auth/
+│   │   ├── config/             # 配置类
+│   │   ├── controller/         # 控制器
+│   │   ├── service/            # 业务层
+│   │   ├── repository/         # 数据访问
+│   │   ├── entity/             # 实体类
+│   │   │   ├── User.java
+│   │   │   ├── Account.java
+│   │   │   ├── SsoSession.java       # SSO 会话
+│   │   │   ├── ClientSession.java    # 客户端会话
+│   │   │   ├── Application.java      # 应用注册
+│   │   │   └── ...
+│   │   └── security/           # 安全配置
+│   └── resources/
+│       ├── application.yml
+│       └── schema.sql          # 数据库脚本
+├── pom.xml
+├── Dockerfile
+└── docker-compose.yml
 ```
 
 ## 配置说明
 
-### 密码策略
+### SSO 配置
 
 ```yaml
 auth:
-  password:
-    min-length: 8
-    require-uppercase: true
-    require-lowercase: true
-    require-digit: true
+  sso:
+    session-timeout: 7200              # SSO 会话超时（秒）
+    cookie-name: "OSYS_SSO_SESSION"    # Cookie 名称
+    cookie-domain: ".your-domain.com"  # 跨子系统共享 Cookie
+    cookie-secure: true
+    cookie-http-only: true
+    auto-approve-scopes: "openid,profile"  # 自动同意的权限
+    back-channel-logout-enabled: true  # 启用统一登出
 ```
 
-### 短信验证码
+### 子系统注册
 
-```yaml
-auth:
-  sms:
-    code-length: 6
-    expire-seconds: 300
-    send-interval: 60
-    max-daily-count: 10
-```
-
-### Token 有效期
-
-```yaml
-auth:
-  jwt:
-    access-token-validity: 7200   # 2小时
-    refresh-token-validity: 604800  # 7天
+```sql
+-- 注册新应用
+INSERT INTO applications 
+  (client_id, app_name, app_code, app_type, homepage_url, sso_enabled)
+VALUES 
+  ('my-app', 'My Application', 'MY_APP', 'WEB', 'https://app.example.com', 1);
 ```
 
 ## Docker 部署
@@ -227,6 +259,7 @@ docker build -t osys-auth-server .
 docker run -p 9000:9000 \
   -e MYSQL_HOST=mysql \
   -e REDIS_HOST=redis \
+  -e SSO_COOKIE_DOMAIN=.your-domain.com \
   osys-auth-server
 
 # 或一键启动
@@ -236,19 +269,15 @@ docker-compose up -d
 ## 开发计划
 
 - [x] 基础 OAuth2 认证
-- [x] 用户名密码登录
-- [x] 手机号验证码登录
-- [x] 多登录方式绑定
-- [ ] 邮箱验证码登录
-- [ ] 微信扫码登录
-- [ ] GitHub 登录
-- [ ] 多因素认证 (MFA)
-- [ ] 用户管理后台
+- [x] SSO 单点登录
+- [x] SLO 统一登出
+- [x] 多账号体系
+- [x] 应用/子系统管理
+- [ ] 设备管理（查看已登录设备）
+- [ ] MFA 多因素认证
+- [ ] 审计日志
+- [ ] 权限中心 (RBAC)
 
 ## 许可证
 
 MIT
-
-## 贡献
-
-欢迎 Issue 和 PR！
