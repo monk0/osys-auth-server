@@ -34,6 +34,12 @@ public class Account {
     private Long userId;
 
     /**
+     * 认证源编码：LOCAL/LDAP/OIDC/...
+     */
+    @Column(name = "source_code", length = 50)
+    private String sourceCode;
+
+    /**
      * 账号类型：USERNAME, MOBILE, EMAIL, WECHAT
      */
     @Column(name = "account_type", nullable = false, length = 20)
@@ -45,6 +51,12 @@ public class Account {
      */
     @Column(name = "account_id", nullable = false, length = 64)
     private String accountId;
+
+    /**
+     * 外部系统用户ID（用于外部认证源）
+     */
+    @Column(name = "external_id", length = 255)
+    private String externalId;
 
     /**
      * 凭证（密码密文/第三方openid）

@@ -30,8 +30,10 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS accounts (
     id              BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
     user_id         BIGINT NOT NULL COMMENT '关联用户ID',
+    source_code     VARCHAR(50) DEFAULT 'LOCAL' COMMENT '认证源编码: LOCAL/LDAP/OIDC/...',
     account_type    VARCHAR(20) NOT NULL COMMENT '账号类型: USERNAME, MOBILE, EMAIL, WECHAT',
     account_id      VARCHAR(64) NOT NULL COMMENT '账号标识(用户名/手机号等)',
+    external_id     VARCHAR(255) COMMENT '外部系统用户ID(用于外部认证源)',
     credential      VARCHAR(255) COMMENT '凭证(密码密文/第三方openid)',
     salt            VARCHAR(32) COMMENT '密码盐值',
     is_primary      TINYINT DEFAULT 0 COMMENT '是否主账号: 0-否, 1-是',
@@ -42,6 +44,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     
     UNIQUE KEY uk_account_type_id (account_type, account_id),
     INDEX idx_user_id (user_id),
+    INDEX idx_source_code (source_code),
+    INDEX idx_external_id (source_code, external_id),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户账号表(多种认证方式)';
@@ -81,7 +85,33 @@ CREATE TABLE IF NOT EXISTS login_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='登录日志';
 
 -- ============================================
--- 5. 应用/子系统注册表 (applications)
+-- 5. 认证源配置表 (auth_sources)
+-- ============================================
+CREATE TABLE IF NOT EXISTS auth_sources (
+    id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
+    source_code         VARCHAR(50) UNIQUE NOT NULL COMMENT '认证源编码',
+    source_name         VARCHAR(100) NOT NULL COMMENT '认证源名称',
+    source_type         VARCHAR(20) NOT NULL COMMENT '类型: LOCAL/LDAP/OIDC/OAUTH2/SAML/CAS/WECHAT_WORK/DINGTALK/FEISHU/CUSTOM',
+    
+    enabled             TINYINT DEFAULT 1 COMMENT '是否启用: 0-否, 1-是',
+    priority            INT DEFAULT 100 COMMENT '优先级（越小越优先）',
+    
+    config_json         JSON COMMENT '认证源配置(JSON)',
+    attribute_mapping   JSON COMMENT '属性映射配置',
+    
+    auto_create_user    TINYINT DEFAULT 1 COMMENT '首次登录自动创建用户: 0-否, 1-是',
+    default_role        VARCHAR(50) COMMENT '自动创建时默认角色',
+    
+    status              TINYINT DEFAULT 1 COMMENT '状态: 0-禁用, 1-启用',
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_type (source_type),
+    INDEX idx_enabled_priority (enabled, priority)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='认证源配置表（支持LDAP/OIDC/企业微信等外部认证）';
+
+-- ============================================
+-- 6. 应用/子系统注册表 (applications)
 -- ============================================
 CREATE TABLE IF NOT EXISTS applications (
     id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
@@ -109,7 +139,7 @@ CREATE TABLE IF NOT EXISTS applications (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='应用/子系统注册表';
 
 -- ============================================
--- 6. SSO 中央会话表 (sso_sessions)
+-- 7. SSO 中央会话表 (sso_sessions)
 -- ============================================
 CREATE TABLE IF NOT EXISTS sso_sessions (
     id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
@@ -134,7 +164,7 @@ CREATE TABLE IF NOT EXISTS sso_sessions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='SSO中央会话表';
 
 -- ============================================
--- 7. 客户端登录状态表 (client_sessions)
+-- 8. 客户端登录状态表 (client_sessions)
 -- ============================================
 CREATE TABLE IF NOT EXISTS client_sessions (
     id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
@@ -158,7 +188,7 @@ CREATE TABLE IF NOT EXISTS client_sessions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户端登录状态表';
 
 -- ============================================
--- 8. 用户应用授权表 (user_app_authorizations)
+-- 9. 用户应用授权表 (user_app_authorizations)
 -- ============================================
 CREATE TABLE IF NOT EXISTS user_app_authorizations (
     id                  BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'ID',
@@ -176,7 +206,7 @@ CREATE TABLE IF NOT EXISTS user_app_authorizations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户应用授权表';
 
 -- ============================================
--- 9. OAuth2 客户端注册表 (Spring Authorization Server)
+-- 10. OAuth2 客户端注册表 (Spring Authorization Server)
 -- ============================================
 CREATE TABLE IF NOT EXISTS oauth2_registered_client (
     id varchar(100) NOT NULL PRIMARY KEY COMMENT '客户端ID',

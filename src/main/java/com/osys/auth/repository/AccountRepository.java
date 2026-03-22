@@ -37,4 +37,14 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
      * 统计用户的账号数量
      */
     long countByUserId(Long userId);
+
+    /**
+     * 根据认证源编码和外部ID查询
+     */
+    Optional<Account> findBySourceCodeAndExternalId(String sourceCode, String externalId);
+
+    /**
+     * 根据认证源编码查询
+     */
+    List<Account> findBySourceCode(String sourceCode);
 }
